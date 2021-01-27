@@ -19,6 +19,7 @@ class Crawler:
         self.maxOutLinks = [] # URL, number of out-links
         self.longestPage = []  # URL, number of words
         self.commonWords = []  # [[word, count],[word, count]]
+        self.domainCount = defaultdict(int)
 
         # TODO:
         self.subdomainCount = defaultdict(int)
@@ -82,16 +83,31 @@ class Crawler:
             outputLinks.append(absoluteURL)
 
         return outputLinks
-
+-
     def is_valid(self, url):
         """
         Function returns True or False based on whether the url has to be fetched or not. This is a great place to
         filter out crawler traps. Duplicated urls will be taken care of by frontier. You don't need to check for duplication
         in this method
         """
+        # Very long URL
+        if len(url) > 100:
+            return False
+
         parsed = urlparse(url)
 
-        domain = parsed.netloc
+        # Extra directories
+        if len(parsed.path) > 60:
+            return False
+            
+        # Visiting pages from same link/domain
+        domainName = parsed.netloc
+        self.domainCount[domainName] += 1
+        if self.domainCount[domainName] > 10:
+            return False
+
+        
+
 
 
         if parsed.scheme not in set(["http", "https"]):
@@ -107,4 +123,3 @@ class Crawler:
         except TypeError:
             print("TypeError for ", parsed)
             return False
-
