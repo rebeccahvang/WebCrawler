@@ -40,21 +40,21 @@ class Crawler:
         self.commonWords = []  # [[word, count],[word, count]]
 
     # ------ ANALYTICS 4 & 5 ------
-    def count_words(self, url_data):
-        """
-        Count words from content of valid pages to find the 50 most common words.
-        """
-        r = requests.get(url_data["url"])
-        content = BeautifulSoup(r.content)
-
-        text_paragraph = (''.join(s.findAll(text=True)) for s in content.findAll('p'))
-        count_paragraph = Counter((x.rstrip(punctuation).lower() for y in text_paragraph for x in y.split()))
-
-        if len(count_paragraph) > self.longestPage[1]:
-            self.longestPage[1] = [url_data["url"], count_paragraph]
-
-        self.commonWords.append(count_paragraph.most_common(50))
-        self.commonWords = self.commonWords.sort()[:50]
+    # def count_words(self, url_data):
+    #     """
+    #     Count words from content of valid pages to find the 50 most common words.
+    #     """
+    #     r = requests.get(url_data["url"])
+    #     content = BeautifulSoup(r.content)
+    #
+    #     text_paragraph = (''.join(s.findAll(text=True)) for s in content.findAll('p'))
+    #     count_paragraph = Counter((x.rstrip(punctuation).lower() for y in text_paragraph for x in y.split()))
+    #
+    #     if len(count_paragraph) > self.longestPage[1]:
+    #         self.longestPage[1] = [url_data["url"], count_paragraph]
+    #
+    #     self.commonWords.append(count_paragraph.most_common(50))
+    #     self.commonWords = self.commonWords.sort()[:50]
 
     def analytics(self):
         analytic_file = open("analytics.txt", 'w')
@@ -111,7 +111,7 @@ class Crawler:
                     if self.corpus.get_file_name(next_link) is not None:
                         self.frontier.add_url(next_link)
                         # ------ ANALYTICS 4 & 5 ------
-                        self.count_words(url_data)
+                        # self.count_words(url_data)
                         # ------ ANALYTICS 4 & 5 ------
                         count += 1
                 else:
@@ -122,7 +122,7 @@ class Crawler:
                 self.maxOutLinks = [url, count]
             # ------ ANALYTICS 2 ------
 
-        self.analytics()
+        # self.analytics()
 
     def extract_next_links(self, url_data):
         """
@@ -135,29 +135,9 @@ class Crawler:
         """
         outputLinks = []
 
-        # file_data = html.fromstring(url_data["content"])
-        # file_data.make_links_absolute(url_data["url"])
-
-        # for url in file_data.iterlinks():
-        #     print(url, "JSDHFDJFJSHJSHFSH")
-        #     if (url[1] == "href"):  # url[1] is the attribute of the link
-        #         outputLinks.append(url[2])  # url[2] is the link
-
-
         content = BeautifulSoup(url_data["content"], "lxml")
-        
-        anchorTags = content.find_all('a')
-        
-        try:
-            baseURL = url_data["url"]
-            
-            for link in anchorTags:
-                relativeURL = link.attrs["href"]
-                absoluteURL = urljoin(baseURL, relativeURL)
-                outputLinks.append(absoluteURL)
-                
-        except KeyError:
-            pass
+        for a in content.find_all('a', href=True):
+            outputLinks.append(urljoin(url_data["url"], a['href']))
 
         return outputLinks
 
