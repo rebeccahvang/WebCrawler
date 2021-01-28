@@ -4,6 +4,8 @@ from lxml import html
 from urllib.parse import urlparse, urljoin, parse_qs
 from bs4 import BeautifulSoup
 from collections import defaultdict, Counter
+import requests
+from string import punctuation
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,7 @@ class Crawler:
         self.frontier = frontier
         self.corpus = corpus
         self.domainCount = defaultdict(int)
+        self.URLcount = defaultdict(int)
         
         # analytics 1: subdomains
         # TODO:
@@ -42,13 +45,15 @@ class Crawler:
         """
         Count words from content of valid pages to find the 50 most common words.
         """
-        content = url_data["content"]
-        text_paragraph = (''.join(s.findAll(text=True)) for s in content.find_all('p'))
+        r = requests.get(url_data["url"])
+        content = BeautifulSoup(r.content)
+    
+        text_paragraph = (''.join(s.findAll(text=True)) for s in content.findAll('p'))
         count_paragraph = Counter((x.rstrip(punctuation).lower() for y in text_paragraph for x in y.split()))
-
-        if count_paragraph > self.longestPage[1]:
+    
+        if len(count_paragraph) > self.longestPage[1]:
             self.longestPage[1] = [url_data["url"], count_paragraph]
-
+    
         self.commonWords.append(count_paragraph.most_common(50))
         self.commonWords = self.commonWords.sort()[:50]
 
@@ -56,32 +61,34 @@ class Crawler:
         analytic_file = open("analytics.txt", 'w')
         
         # analytic 1
+        analytic_file.write('Subdomain and Counts: \n')
         for k, v in self.subdomainCount.items():
             analytic_file.write('{}, {}\n'.format(k, v))
                 
         # analytic 2
-        analytic_file.write('Page w/Most Valid Outlinks: {}\n'.format(self.maxOutLinks[0]))
+        analytic_file.write('\nPage w/Most Valid Outlinks: {}\n'.format(self.maxOutLinks[0]))
 
         # analytic 3
-        analytic_file.write("Downloaded URLS: \n")
+        analytic_file.write("\nDownloaded URLS: \n")
         for url in self.downloadedURLS:
             analytic_file.write(url + '\n')
 
         analytic_file.write("Trap URLS: \n")
         for trap_url in self.traps:
-            analytic_file.write(url + '\n')
-
+            analytic_file.write(trap_url + '\n')
 
         # analytic 4
-        analytic_file.write("URL with Longest Page: \n")
+        analytic_file.write("\nURL with Longest Page: \n")
         analytic_file.write(self.longestPage[0])
         analytic_file.write("\n")
 
         # analytic 5
         self.commonWords.sort(key = lambda x:x[1], reverse=True)
-        analytic_file.write("50 Most Common Words: \n")
-        analytic_file.write('{}\n'.format(item[0] for item in self.commonWords))
-        
+        analytic_file.write("50 Most Common Words | Word Occurrences: \n")
+        for w,c in self.commonWords:
+            print(w)
+            analytic_file.write(str(w) + '\n')
+
     def start_crawling(self):
         """
         This method starts the crawling process which is scraping urls from the next available link in frontier and adding
@@ -95,21 +102,21 @@ class Crawler:
             count = 0
             for next_link in self.extract_next_links(url_data):
                 if self.is_valid(next_link):
-                    # # ------ ANALYTICS 1 ------
-                    # parsed = urlparse(url)
-                    # subdomain = parsed.netloc.split('.')[0]
-                    # subdomainCount[subdomain] += 1
-                    # # ------ ANALYTICS 1 ------
+                    # ------ ANALYTICS 1 ------
+                    parsed = urlparse(url)
+                    subdomain = parsed.netloc.split('.')[0]
+                    self.subdomainCount[subdomain] += 1
+                    # ------ ANALYTICS 1 ------
 
-                    # # ------ ANALYTICS 3 ------
-                    # self.downloadedURLS.append(next_link)
-                    # # ------ ANALYTICS 3 ------
+                    # ------ ANALYTICS 3 ------
+                    self.downloadedURLS.append(next_link)
+                    # ------ ANALYTICS 3 ------
 
                     if self.corpus.get_file_name(next_link) is not None:
                         self.frontier.add_url(next_link)
-                        # # ------ ANALYTICS 4 & 5 ------
-                        # self.count_words(self.corpus.fetch_url(next_link))
-                        # # ------ ANALYTICS 4 & 5 ------
+                        # ------ ANALYTICS 4 & 5 ------
+                        # self.count_words(url_data)
+                        # ------ ANALYTICS 4 & 5 ------
                         count += 1
                 else:
                     self.traps.append(next_link)
@@ -128,29 +135,15 @@ class Crawler:
         list of urls in their absolute form (some links in the content are relative and needs to be converted to the
         absolute form). Validation of links is done later via is_valid method. It is not required to remove duplicates
         that have already been fetched. The frontier takes care of that.
-
         Suggested library: lxml
         """
         outputLinks = []
-        # print(url_data)
-        if (url_data["content"] is not None):
-            # print(url_data)
-            # print(url_data["content"])
-            content = BeautifulSoup(url_data["content"], "lxml")
-            
-            anchorTags = content.find_all('a')
-            url = url_data["url"]
 
-            for link in anchorTags:
-                relativeURL = link.attrs["href"]
-                absoluteURL = urljoin(url, relativeURL)
-                outputLinks.append(absoluteURL)
-
-            # for link in file_data.iterlinks():
-            #     href = link.attrs["href"]
-            #     outputLinks.append(link)
-        else:
-            print("X")
+        if url_data["is_redirected"] is True:
+            url_data = self.corpus.fetch_url(url_data["url"])
+        content = BeautifulSoup(url_data["content"], "lxml")
+        for a in content.find_all('a', href=True):
+            outputLinks.append(urljoin(url_data["url"], a['href']))
 
         return outputLinks
 
@@ -160,44 +153,50 @@ class Crawler:
         filter out crawler traps. Duplicated urls will be taken care of by frontier. You don't need to check for duplication
         in this method
         """
-
         parsed = urlparse(url)
 
         if parsed.scheme not in set(["http", "https"]):
             return False
         try:
             # Very long URL
-            if len(url) > 100:
+            if len(url) > 150:
                 return False
+
+            # Visiting exact same URL
+            if self.URLcount[url] >= 1:
+                return False
+            self.URLcount[url] += 1
                 
             # Visiting pages from same link/domain
             domainName = parsed.netloc + parsed.path
             self.domainCount[domainName] += 1
-            if self.domainCount[domainName] > 10:
+            if self.domainCount[domainName] > 15:
                 return False
             
             # Many query params or very long query
-            query_count = parse_qs(parsed)
-            if(len(query_count.values()) > 3):
-                return False
+            query = parsed.query
+            if len(query) > 0:
+                query_count = parse_qs(query)
+                if(len(query_count.values()) > 5):
+                    return False
 
-            for v in query_count.values():
-                for inner_v in v:
-                    if(len(inner_v) > 25):
-                        return False
+                for v in query_count.values():
+                    for inner_v in v:
+                        if(len(inner_v) > 25):
+                            return False
 
             path = parsed.path.split("/")
             # Extra directories
-            if len(path) >= 5:
+            if len(path) >= 7:
                 return False
 
-            # Repeating paths in same URL
-            visited_paths = set()
-            for p in path:
-                if p in visited_paths:
-                    return False
-                elif p not in visited_paths:
-                    set.add(p)
+            # # Repeating paths in same URL
+            # visited_paths = set()
+            # for p in path:
+            #     if p in visited_paths:
+            #         return False
+            #     elif p not in visited_paths:
+            #         visited_paths.add(p)
 
             return ".ics.uci.edu" in parsed.hostname \
                    and not re.match(".*\.(css|js|bmp|gif|jpe?g|ico" + "|png|tiff?|mid|mp2|mp3|mp4" \
@@ -209,4 +208,3 @@ class Crawler:
         except TypeError:
             print("TypeError for ", parsed)
             return False
-
