@@ -1,7 +1,7 @@
 import logging
 import re
 from lxml import html
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin, parse_qs
 from bs4 import BeautifulSoup
 from collections import defaultdict, Counter
 
@@ -95,21 +95,21 @@ class Crawler:
             count = 0
             for next_link in self.extract_next_links(url_data):
                 if self.is_valid(next_link):
-                    # ------ ANALYTICS 1 ------
-                    parsed = urlparse(url)
-                    subdomain = parsed.netloc.split('.')[0]
-                    subdomainCount[subdomain] += 1
-                    # ------ ANALYTICS 1 ------
+                    # # ------ ANALYTICS 1 ------
+                    # parsed = urlparse(url)
+                    # subdomain = parsed.netloc.split('.')[0]
+                    # subdomainCount[subdomain] += 1
+                    # # ------ ANALYTICS 1 ------
 
-                    # ------ ANALYTICS 3 ------
-                    self.downloadedURLS.append(next_link)
-                    # ------ ANALYTICS 3 ------
+                    # # ------ ANALYTICS 3 ------
+                    # self.downloadedURLS.append(next_link)
+                    # # ------ ANALYTICS 3 ------
 
                     if self.corpus.get_file_name(next_link) is not None:
                         self.frontier.add_url(next_link)
-                        # ------ ANALYTICS 4 & 5 ------
-                        self.count_words(self.corpus.fetch_url(next_link))
-                        # ------ ANALYTICS 4 & 5 ------
+                        # # ------ ANALYTICS 4 & 5 ------
+                        # self.count_words(self.corpus.fetch_url(next_link))
+                        # # ------ ANALYTICS 4 & 5 ------
                         count += 1
                 else:
                     self.traps.append(next_link)
@@ -132,17 +132,25 @@ class Crawler:
         Suggested library: lxml
         """
         outputLinks = []
-        print(url_data)
-        # content = BeautifulSoup(url_data["content"], "lxml")
-        # anchorTags = content.find_all("a")
-        # url = url_data["url"]
+        # print(url_data)
+        if (url_data["content"] is not None):
+            # print(url_data)
+            # print(url_data["content"])
+            content = BeautifulSoup(url_data["content"], "lxml")
+            
+            anchorTags = content.find_all('a')
+            url = url_data["url"]
 
-        file_data = html.fromstring(url_data["content"])
-        file_data.make_links_absolute(url_data["url"])
+            for link in anchorTags:
+                relativeURL = link.attrs["href"]
+                absoluteURL = urljoin(url, relativeURL)
+                outputLinks.append(absoluteURL)
 
-        for link in file_data.iterlinks():
-            href = link.attrs["href"]
-            outputLinks.append(link)
+            # for link in file_data.iterlinks():
+            #     href = link.attrs["href"]
+            #     outputLinks.append(link)
+        else:
+            print("X")
 
         return outputLinks
 
