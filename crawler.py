@@ -1,8 +1,11 @@
+# Rebecca Huang (rmhuang1)
+
+
 import logging
 import re
 from lxml import html
 from urllib.parse import urlparse, urljoin, parse_qs
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 from collections import defaultdict, Counter
 import requests
 from string import punctuation
@@ -30,6 +33,8 @@ class Crawler:
         self.corpus = corpus
         self.domainCount = defaultdict(int)
         self.URLcount = defaultdict(int)
+        self.pathCount = defaultdict(int)
+        self.previous_link = ""
         
         # analytics 1: subdomains
         self.subdomainCount = defaultdict(int)
@@ -56,15 +61,30 @@ class Crawler:
         count = 0
 
         # divide text into token words and check against stopword
-        # content = re.split(';,|".!  ', content. find_all(text=True))
-        # for word in content.find_all(text=True):
-        for word in content.get_text():
-            if word not in STOP_WORDS:
-                count += 1
-                self.commonWords[word] += 1
+        temp = ""
+        for c in content.get_text():
+            if c.isalnum() and c.isascii():
+                temp += c
+            else:
+                if len(temp) > 0:
+                    if temp not in STOP_WORDS:
+                        count += 1
+                        self.commonWords[temp] += 1
+                temp = ""
+                
 
         if count > self.longestPage[1]:
-            self.longestPage = [url_data["url"], count]       
+            self.longestPage = [url_data["url"], count]
+
+    # ------ ANALYTICS 1 ------
+    def subdomains(self):
+        for url in self.downloadedURLS:
+            parsed = urlparse(url)
+            subdomain = parsed.netloc.split('.')
+            for i in range(len(subdomain) - 2):
+                if subdomain[i] != "www":
+                    self.subdomainCount[subdomain[i]] += 1
+                    
 
     def analytics(self):
         analytic_file = open("analytics.txt", 'w')
@@ -72,7 +92,7 @@ class Crawler:
         # analytic 1
         analytic_file.write('Subdomain and Counts: \n')
         for k, v in self.subdomainCount.items():
-            analytic_file.write('{}, {}\n'.format(k, v))
+            analytic_file.write('{}: {}\n'.format(k, v))
                 
         # analytic 2
         analytic_file.write('\nPage w/Most Valid Outlinks: {}\n'.format(self.maxOutLinks[0]))
@@ -82,7 +102,7 @@ class Crawler:
         for url in self.downloadedURLS:
             analytic_file.write(url + '\n')
 
-        analytic_file.write("Trap URLS: \n")
+        analytic_file.write("\nTrap URLS: \n")
         for trap_url in self.traps:
             analytic_file.write(trap_url + '\n')
 
@@ -93,7 +113,7 @@ class Crawler:
 
         # analytic 5
         sorted_words = sorted(self.commonWords.items(), key = lambda item: item[1], reverse = True)[:50]
-        analytic_file.write("50 Most Common Words | Word Occurrences: \n")
+        analytic_file.write("\n50 Most Common Words: \n")
         for w,c in sorted_words:
             analytic_file.write(str(w) + '\n')
 
@@ -108,14 +128,8 @@ class Crawler:
             url_data = self.corpus.fetch_url(url)
 
             count = 0
-            for next_link in self.extract_next_links(url_data):
+            for next_link in self.extract_next_links(url_data):            
                 if self.is_valid(next_link):
-                    # ------ ANALYTICS 1 ------
-                    parsed = urlparse(url)
-                    subdomain = parsed.netloc.split('.')[0]
-                    self.subdomainCount[subdomain] += 1
-                    # ------ ANALYTICS 1 ------
-
                     # ------ ANALYTICS 3 ------
                     self.downloadedURLS.add(next_link)
                     # ------ ANALYTICS 3 ------
@@ -123,17 +137,20 @@ class Crawler:
                     if self.corpus.get_file_name(next_link) is not None:
                         self.frontier.add_url(next_link)
                         # ------ ANALYTICS 4 & 5 ------
-                        # self.count_words(url_data)
+                        self.count_words(url_data)
                         # ------ ANALYTICS 4 & 5 ------
                         count += 1
                 else:
                     self.traps.add(next_link)
+                self.previous_link = next_link
+                
             
             # ------ ANALYTICS 2 ------
             if count > self.maxOutLinks[1]:
                 self.maxOutLinks = [url, count]
             # ------ ANALYTICS 2 ------
 
+        self.subdomains()
         self.analytics()
 
     def extract_next_links(self, url_data):
@@ -146,12 +163,13 @@ class Crawler:
         Suggested library: lxml
         """
         outputLinks = []
-        
+
         if url_data["is_redirected"] is True:
-            url_data = self.corpus.fetch_url(url_data["url"])
-        content = BeautifulSoup(url_data["content"], features="lxml")
-        for a in content.find_all('a', href=True):
-            outputLinks.append(urljoin(url_data["url"], a['href']))
+            url_data = self.corpus.fetch_url(url_data["final_url"])
+        if url_data["content"] is not None and url_data["http_code"] != 404:
+            content = BeautifulSoup(url_data["content"], features="lxml")
+            for a in content.find_all('a', href=True):
+                outputLinks.append(urljoin(url_data["url"], a['href']))
 
         return outputLinks
 
@@ -167,30 +185,34 @@ class Crawler:
             return False
         try:
             # Very long URL
-            if len(url) > 150:
+            if len(url) > 100:
                 return False
-            
+
+            # Continuously repeating
+            count = sum(1 for a, b in zip(self.previous_link, url) if a != b) + abs(len(self.previous_link) - len(url))
+            if count < 3:
+                return False
+
             query = parsed.query
             if len(query) > 0:
                 # Visiting pages from same link/domain
                 domainName = parsed.netloc + parsed.path
                 self.domainCount[domainName] += 1
-                if self.domainCount[domainName] >= 50:
+                if self.domainCount[domainName] > 10:
                     return False
 
-                # Many query params or very long query
+                # Many query params or very long query (prevents dynamic URLs/calendar)
                 query_count = parse_qs(query)
-                if(len(query_count.values()) > 3):
+                if (len(query_count.values()) > 3):
                     return False
 
                 for v in query_count.values():
-                    for inner_v in v:
-                        if(len(inner_v) > 25):
-                            return False
+                    if (len(v[0]) > 25):
+                        return False
 
             path = parsed.path.split("/")
             # Extra directories
-            if len(path) >= 7:
+            if len(path) > 5:
                 return False
 
             # Repeating paths in same URL
@@ -199,7 +221,7 @@ class Crawler:
                 if visited_paths[p] > 2:
                     return False
                 visited_paths[p] += 1
-            
+                
             return ".ics.uci.edu" in parsed.hostname \
                    and not re.match(".*\.(css|js|bmp|gif|jpe?g|ico" + "|png|tiff?|mid|mp2|mp3|mp4" \
                                     + "|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf" \
