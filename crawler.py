@@ -1,6 +1,3 @@
-# Rebecca Huang (rmhuang1)
-
-
 import logging
 import re
 from lxml import html
@@ -13,13 +10,25 @@ import re
 
 logger = logging.getLogger(__name__)
 
-STOP_WORDS = ['i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', "you're", "you've", "you'll", "you'd", 'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', "she's", 
-'her', 'hers', 'herself', 'it', "it's", 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves', 'what', 'which', 'who', 'whom', 'this', 'that', "that'll", 'these', 'those', 'am', 'is', 'are', 'was', 
-'were', 'be', 'been', 'being', 'have', 'has', 'had', 'having', 'do', 'does', 'did', 'doing', 'a', 'an', 'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until', 'while', 'of', 'at', 'by', 'for', 'with', 'about', 
-'against', 'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from', 'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here', 'there', 
-'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some', 'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can', 'will', 'just',
- 'don', "don't", 'should', "should've", 'now', 'd', 'll', 'm', 'o', 're', 've', 'y', 'ain', 'aren', "aren't", 'couldn', "couldn't", 'didn', "didn't", 'doesn', "doesn't", 'hadn', "hadn't", 'hasn', "hasn't", 'haven', 
- "haven't", 'isn', "isn't", 'ma', 'mightn', "mightn't", 'mustn', "mustn't", 'needn', "needn't", 'shan', "shan't", 'shouldn', "shouldn't", 'wasn', "wasn't", 'weren', "weren't", 'won', "won't", 'wouldn', "wouldn't"]
+STOP_WORDS = ['i', 'me', 'my', 'myself', 'we', 'our', 'ours', 'ourselves', 'you', "you're", "you've", "you'll", "you'd",
+              'your', 'yours', 'yourself', 'yourselves', 'he', 'him', 'his', 'himself', 'she', "she's",
+              'her', 'hers', 'herself', 'it', "it's", 'its', 'itself', 'they', 'them', 'their', 'theirs', 'themselves',
+              'what', 'which', 'who', 'whom', 'this', 'that', "that'll", 'these', 'those', 'am', 'is', 'are', 'was',
+              'were', 'be', 'been', 'being', 'have', 'has', 'had', 'having', 'do', 'does', 'did', 'doing', 'a', 'an',
+              'the', 'and', 'but', 'if', 'or', 'because', 'as', 'until', 'while', 'of', 'at', 'by', 'for', 'with',
+              'about',
+              'against', 'between', 'into', 'through', 'during', 'before', 'after', 'above', 'below', 'to', 'from',
+              'up', 'down', 'in', 'out', 'on', 'off', 'over', 'under', 'again', 'further', 'then', 'once', 'here',
+              'there',
+              'when', 'where', 'why', 'how', 'all', 'any', 'both', 'each', 'few', 'more', 'most', 'other', 'some',
+              'such', 'no', 'nor', 'not', 'only', 'own', 'same', 'so', 'than', 'too', 'very', 's', 't', 'can', 'will',
+              'just',
+              'don', "don't", 'should', "should've", 'now', 'd', 'll', 'm', 'o', 're', 've', 'y', 'ain', 'aren',
+              "aren't", 'couldn', "couldn't", 'didn', "didn't", 'doesn', "doesn't", 'hadn', "hadn't", 'hasn', "hasn't",
+              'haven',
+              "haven't", 'isn', "isn't", 'ma', 'mightn', "mightn't", 'mustn', "mustn't", 'needn', "needn't", 'shan',
+              "shan't", 'shouldn', "shouldn't", 'wasn', "wasn't", 'weren', "weren't", 'won', "won't", 'wouldn',
+              "wouldn't"]
 
 
 class Crawler:
@@ -35,12 +44,12 @@ class Crawler:
         self.URLcount = defaultdict(int)
         self.pathCount = defaultdict(int)
         self.previous_link = ""
-        
+
         # analytics 1: subdomains
         self.subdomainCount = defaultdict(int)
 
         # analytic 2: valid outlinks
-        self.maxOutLinks = ["", 0] # URL, number of out-links
+        self.maxOutLinks = ["", 0]  # URL, number of out-links
 
         # analytic 3: downloaded urls and identified traps
         self.downloadedURLS = set()
@@ -53,11 +62,11 @@ class Crawler:
         self.commonWords = defaultdict(int)  # {(word: count),...}
 
     # ------ ANALYTICS 4 & 5 ------
-    def count_words(self, url_data):
+    def count_words(self, content, url):
         """
         Count words from content of valid pages to find the 50 most common words.
         """
-        content = BeautifulSoup(url_data["content"], features="lxml")
+        # content = BeautifulSoup(url_data["content"], features="lxml")
         count = 0
 
         # divide text into token words and check against stopword
@@ -71,10 +80,9 @@ class Crawler:
                         count += 1
                         self.commonWords[temp] += 1
                 temp = ""
-                
 
         if count > self.longestPage[1]:
-            self.longestPage = [url_data["url"], count]
+            self.longestPage = [url, count]
 
     # ------ ANALYTICS 1 ------
     def subdomains(self):
@@ -84,16 +92,15 @@ class Crawler:
             for i in range(len(subdomain) - 2):
                 if subdomain[i] != "www":
                     self.subdomainCount[subdomain[i]] += 1
-                    
 
     def analytics(self):
         analytic_file = open("analytics.txt", 'w')
-        
+
         # analytic 1
         analytic_file.write('Subdomain and Counts: \n')
         for k, v in self.subdomainCount.items():
             analytic_file.write('{}: {}\n'.format(k, v))
-                
+
         # analytic 2
         analytic_file.write('\nPage w/Most Valid Outlinks: {}\n'.format(self.maxOutLinks[0]))
 
@@ -112,9 +119,9 @@ class Crawler:
         analytic_file.write("\n")
 
         # analytic 5
-        sorted_words = sorted(self.commonWords.items(), key = lambda item: item[1], reverse = True)[:50]
+        sorted_words = sorted(self.commonWords.items(), key=lambda item: item[1], reverse=True)[:50]
         analytic_file.write("\n50 Most Common Words: \n")
-        for w,c in sorted_words:
+        for w, c in sorted_words:
             analytic_file.write(str(w) + '\n')
 
     def start_crawling(self):
@@ -124,11 +131,12 @@ class Crawler:
         """
         while self.frontier.has_next_url():
             url = self.frontier.get_next_url()
-            logger.info("Fetching URL %s ... Fetched: %s, Queue size: %s", url, self.frontier.fetched, len(self.frontier))
+            logger.info("Fetching URL %s ... Fetched: %s, Queue size: %s", url, self.frontier.fetched,
+                        len(self.frontier))
             url_data = self.corpus.fetch_url(url)
 
             count = 0
-            for next_link in self.extract_next_links(url_data):            
+            for next_link in self.extract_next_links(url_data):
                 if self.is_valid(next_link):
                     # ------ ANALYTICS 3 ------
                     self.downloadedURLS.add(next_link)
@@ -136,15 +144,11 @@ class Crawler:
 
                     if self.corpus.get_file_name(next_link) is not None:
                         self.frontier.add_url(next_link)
-                        # ------ ANALYTICS 4 & 5 ------
-                        self.count_words(url_data)
-                        # ------ ANALYTICS 4 & 5 ------
                         count += 1
                 else:
                     self.traps.add(next_link)
-                self.previous_link = next_link
-                
-            
+                # self.previous_link = next_link
+
             # ------ ANALYTICS 2 ------
             if count > self.maxOutLinks[1]:
                 self.maxOutLinks = [url, count]
@@ -168,6 +172,7 @@ class Crawler:
             url_data = self.corpus.fetch_url(url_data["final_url"])
         if url_data["content"] is not None and url_data["http_code"] != 404:
             content = BeautifulSoup(url_data["content"], features="lxml")
+            self.count_words(content, url_data["url"])
             for a in content.find_all('a', href=True):
                 outputLinks.append(urljoin(url_data["url"], a['href']))
 
@@ -189,9 +194,9 @@ class Crawler:
                 return False
 
             # Continuously repeating
-            count = sum(1 for a, b in zip(self.previous_link, url) if a != b) + abs(len(self.previous_link) - len(url))
-            if count < 3:
-                return False
+            # count = sum(1 for a, b in zip(self.previous_link, url) if a != b) + abs(len(self.previous_link) - len(url))
+            # if count < 3:
+            #     return False
 
             query = parsed.query
             if len(query) > 0:
@@ -221,7 +226,14 @@ class Crawler:
                 if visited_paths[p] > 2:
                     return False
                 visited_paths[p] += 1
-                
+
+            # # Same path visited multiple times
+            # if len(path) > 1:
+            #     new_path = '/'.join(path[1:-1])
+            #     self.pathCount[new_path] += 1
+            #     if self.pathCount[new_path] > 5:
+            #         return False
+
             return ".ics.uci.edu" in parsed.hostname \
                    and not re.match(".*\.(css|js|bmp|gif|jpe?g|ico" + "|png|tiff?|mid|mp2|mp3|mp4" \
                                     + "|wav|avi|mov|mpeg|ram|m4v|mkv|ogg|ogv|pdf" \
