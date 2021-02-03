@@ -1,11 +1,7 @@
 import logging
-import re
-from lxml import html
 from urllib.parse import urlparse, urljoin, parse_qs
-from bs4 import BeautifulSoup, Comment
-from collections import defaultdict, Counter
-import requests
-from string import punctuation
+from bs4 import BeautifulSoup
+from collections import defaultdict
 import re
 
 logger = logging.getLogger(__name__)
@@ -41,9 +37,7 @@ class Crawler:
         self.frontier = frontier
         self.corpus = corpus
         self.domainCount = defaultdict(int)
-        self.URLcount = defaultdict(int)
-        self.pathCount = defaultdict(int)
-        self.previous_link = ""
+        self.subdirectoryCount = defaultdict(int)
 
         # analytics 1: subdomains
         self.subdomainCount = defaultdict(int)
@@ -66,7 +60,6 @@ class Crawler:
         """
         Count words from content of valid pages to find the 50 most common words.
         """
-        # content = BeautifulSoup(url_data["content"], features="lxml")
         count = 0
 
         # divide text into token words and check against stopword
@@ -75,7 +68,8 @@ class Crawler:
             if c.isalnum() and c.isascii():
                 temp += c
             else:
-                if len(temp) > 0:
+                if len(temp) > 1 and temp.isdigit() == False:
+                    temp = temp.lower()
                     if temp not in STOP_WORDS:
                         count += 1
                         self.commonWords[temp] += 1
@@ -147,7 +141,6 @@ class Crawler:
                         count += 1
                 else:
                     self.traps.add(next_link)
-                # self.previous_link = next_link
 
             # ------ ANALYTICS 2 ------
             if count > self.maxOutLinks[1]:
@@ -193,46 +186,34 @@ class Crawler:
             if len(url) > 100:
                 return False
 
-            # Continuously repeating
-            # count = sum(1 for a, b in zip(self.previous_link, url) if a != b) + abs(len(self.previous_link) - len(url))
-            # if count < 3:
-            #     return False
+            # Visiting pages from same link/domain
+            domainName = parsed.netloc + parsed.path
+            self.domainCount[domainName] += 1
+            if self.domainCount[domainName] > 10:
+                return False
+
+            # Check continuously repeating subdirectories
+            last_path_index = parsed.path.rfind('/')
+            new_path = parsed.path[:last_path_index]
+            if last_path_index == len(parsed.path):
+                new_index = new_path.rfind('/')
+                new_path = new_path[:new_index]
+            self.subdirectoryCount[new_path] += 1
+            if self.subdirectoryCount[new_path] > 50:
+                return False
 
             query = parsed.query
             if len(query) > 0:
-                # Visiting pages from same link/domain
-                domainName = parsed.netloc + parsed.path
-                self.domainCount[domainName] += 1
-                if self.domainCount[domainName] > 10:
-                    return False
-
-                # Many query params or very long query (prevents dynamic URLs/calendar)
+                # Many query params or very long query
                 query_count = parse_qs(query)
                 if (len(query_count.values()) > 3):
                     return False
 
+                # Query value too long
                 for v in query_count.values():
                     if (len(v[0]) > 25):
                         return False
 
-            path = parsed.path.split("/")
-            # Extra directories
-            if len(path) > 5:
-                return False
-
-            # Repeating paths in same URL
-            visited_paths = defaultdict(int)
-            for p in path:
-                if visited_paths[p] > 2:
-                    return False
-                visited_paths[p] += 1
-
-            # # Same path visited multiple times
-            # if len(path) > 1:
-            #     new_path = '/'.join(path[1:-1])
-            #     self.pathCount[new_path] += 1
-            #     if self.pathCount[new_path] > 5:
-            #         return False
 
             return ".ics.uci.edu" in parsed.hostname \
                    and not re.match(".*\.(css|js|bmp|gif|jpe?g|ico" + "|png|tiff?|mid|mp2|mp3|mp4" \
